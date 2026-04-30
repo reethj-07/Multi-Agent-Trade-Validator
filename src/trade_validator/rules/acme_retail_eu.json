@@ -1,0 +1,44 @@
+{
+  "customer_id": "acme_retail_eu",
+  "display_name": "Acme Retail EU BV",
+  "consignee_name": {
+    "required": true,
+    "normalized_equals": "ACME RETAIL EU BV",
+    "description": "Legal consignee must match Acme Retail EU BV exactly (spacing/case ignored)"
+  },
+  "hs_code": {
+    "required": true,
+    "regex": "^8471(\\.\\d{2,6})?$",
+    "description": "HS code must be in chapter 8471 (e.g. 8471 or 8471.30)"
+  },
+  "port_of_loading": {
+    "required": true,
+    "allowed_normalized": ["SHANGHAI", "NINGBO", "SHENZHEN", "ROTTERDAM", "QINGDAO"],
+    "description": "Port of loading must be one of the approved Asia/EU origin ports"
+  },
+  "port_of_discharge": {
+    "required": true,
+    "allowed_normalized": ["ROTTERDAM", "HAMBURG", "ANTWERP", "FELIXSTOWE", "LE HAVRE"],
+    "description": "Port of discharge must be an approved North Sea / Channel hub"
+  },
+  "incoterms": {
+    "required": true,
+    "allowed_normalized": ["FOB", "CIF", "EXW", "FCA", "DAP", "DDP"],
+    "description": "Incoterm must be an approved 2020 term (3-letter code)"
+  },
+  "description_of_goods": {
+    "required": true,
+    "min_chars": 5,
+    "description": "Goods description must be present and substantive"
+  },
+  "gross_weight": {
+    "required": true,
+    "must_contain_kg": true,
+    "description": "Gross weight line must include a KG unit (e.g. 1250 KG)"
+  },
+  "invoice_number": {
+    "required": true,
+    "min_length": 4,
+    "description": "Commercial invoice number must be at least 4 characters"
+  }
+}

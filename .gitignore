@@ -1,0 +1,30 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Secrets & local env
+.env
+.env.local
+*.pem
+
+# App / local data
+trade_validator.db
+*.sqlite3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Assignment brief — do not commit (copyright / NDA / course materials)
+Problemstatement/
