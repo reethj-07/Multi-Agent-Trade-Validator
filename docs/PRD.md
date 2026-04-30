@@ -57,7 +57,7 @@ They drop in a PDF or photo and get back the fields that matter, each with a con
 3. Rule violation → show found vs expected on screen so the CG person can explain it to the customer or the supplier without digging back into the PDF.  
 4. Several fields wrong → one draft email that lists each gap so they edit once instead of sending five contradictory notes.  
 5. Manager asks “how many stuck in review this week?” → ask in normal language over stored runs, get counts that map to real rows.  
-6. Job dies halfway → same thread id can pick up from the last checkpoint instead of burning another full extraction or losing the correlation id.  
+6. Job dies halfway → in dev, LangGraph can reload from the last in-memory checkpoint if you re-invoke with the same `thread_id` in the **same process**; the HTTP API runs one full `invoke` per upload (durable replay would need a persisted checkpointer + resume endpoint).  
 
 ---
 
@@ -81,7 +81,7 @@ LangGraph carries a typed state dict. After each node we stash `model_dump(mode=
 
 ### 4.4 Crash recovery
 
-Checkpoints use LangGraph’s `MemorySaver` after each node. `thread_id` stays tied to the job id (UUID) so a retry in the same process can resume instead of starting cold. For a real deployment you’d swap in a durable checkpointer; the wiring is the same idea.
+Checkpoints use LangGraph’s `MemorySaver` after each node. `thread_id` is the job id (UUID) so state is correlated end-to-end; resuming mid-graph is possible only while that checkpointer instance still exists (not across separate API requests today). For production you’d swap in a durable checkpointer and expose explicit resume.
 
 ---
 

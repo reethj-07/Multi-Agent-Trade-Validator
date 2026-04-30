@@ -68,7 +68,7 @@ flowchart TB
   GT -->|read_only_SELECT| DB
 ```
 
-**State:** Each node reads/writes a typed `GraphState` (extraction, validation, and router payloads as JSON-serializable dicts from Pydantic). **Checkpoints:** `MemorySaver` + per-run `thread_id` for resumability in development.
+**State:** Each node reads/writes a typed `GraphState` (extraction, validation, and router payloads as JSON-serializable dicts from Pydantic). **Checkpoints:** `MemorySaver` + per-run `thread_id` (same as `job_id`) for in-process replay during development; each HTTP upload runs a fresh graph instance.
 
 ## Repository structure
 
