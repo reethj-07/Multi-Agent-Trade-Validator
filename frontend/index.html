@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trade document validation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header__brand">
+          <span class="header__logo" aria-hidden="true">◆</span>
+          <div>
+            <h1 class="header__title">Trade document validation</h1>
+            <p class="header__tagline">
+              Extract → validate (Acme rules) → route — powered by your FastAPI backend
+            </p>
+          </div>
+        </div>
+        <div class="header__meta">
+          <div class="api-url" title="API base used by this page">
+            <span class="api-url__label">API</span>
+            <code class="api-url__value" id="api-base-display">—</code>
+          </div>
+          <div class="status-pill" id="health-pill" data-state="unknown">
+            <span class="status-pill__dot" aria-hidden="true"></span>
+            <span id="health-text">Checking…</span>
+          </div>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Main">
+        <button
+          type="button"
+          class="tabs__btn is-active"
+          role="tab"
+          aria-selected="true"
+          aria-controls="panel-pipeline"
+          id="tab-pipeline"
+          data-panel="panel-pipeline"
+        >
+          Pipeline
+        </button>
+        <button
+          type="button"
+          class="tabs__btn"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-analytics"
+          id="tab-analytics"
+          data-panel="panel-analytics"
+        >
+          Analytics (NL)
+        </button>
+      </nav>
+
+      <main class="main">
+        <section
+          id="panel-pipeline"
+          class="panel"
+          role="tabpanel"
+          aria-labelledby="tab-pipeline"
+        >
+          <div class="grid-2">
+            <div class="card">
+              <h2 class="card__title">Document</h2>
+              <p class="card__hint">
+                PDF or image (PNG, JPEG, WebP). Same request as
+                <code>POST /api/v1/pipeline/run</code>.
+              </p>
+              <div
+                class="dropzone"
+                id="dropzone"
+                tabindex="0"
+                role="button"
+                aria-label="Upload document"
+              >
+                <input
+                  type="file"
+                  id="file-input"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
+                  hidden
+                />
+                <div class="dropzone__inner">
+                  <span class="dropzone__icon" aria-hidden="true">📄</span>
+                  <p class="dropzone__primary" id="file-label">
+                    Drop a file here or click to browse
+                  </p>
+                  <p class="dropzone__secondary">Max 20 MB</p>
+                </div>
+              </div>
+              <label class="checkbox">
+                <input type="checkbox" id="use-pro" />
+                <span>Use Gemini 2.5 Pro for extraction (slower, may be more accurate)</span>
+              </label>
+              <div class="actions">
+                <button type="button" class="btn btn--primary" id="btn-run" disabled>
+                  Run pipeline
+                </button>
+                <button type="button" class="btn btn--ghost" id="btn-clear" hidden>
+                  Clear result
+                </button>
+              </div>
+              <p class="run-hint" id="run-hint">
+                Pipeline can take 30–90s depending on document size and model.
+              </p>
+            </div>
+
+            <div class="card card--stretch">
+              <h2 class="card__title">Result</h2>
+              <div id="pipeline-placeholder" class="placeholder">
+                <p>Run the pipeline to see extraction, validation, and router output.</p>
+              </div>
+              <div id="pipeline-busy" class="busy" hidden>
+                <div class="spinner" aria-hidden="true"></div>
+                <p>Running graph (extract → validate → route)…</p>
+              </div>
+              <div id="pipeline-error" class="alert alert--error" hidden></div>
+              <div id="pipeline-output" hidden></div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="panel-analytics"
+          class="panel"
+          role="tabpanel"
+          aria-labelledby="tab-analytics"
+          hidden
+        >
+          <div class="grid-2">
+            <div class="card">
+              <h2 class="card__title">Natural language query</h2>
+              <p class="card__hint">
+                Read-only SQL over stored runs — same as
+                <code>POST /api/v1/query</code>. Run at least one pipeline job first.
+              </p>
+              <label class="field">
+                <span class="field__label">Question</span>
+                <textarea
+                  id="nl-question"
+                  class="field__textarea"
+                  rows="4"
+                  placeholder="e.g. How many runs were flagged for human review this week?"
+                ></textarea>
+              </label>
+              <div class="actions">
+                <button type="button" class="btn btn--primary" id="btn-nl">
+                  Run query
+                </button>
+              </div>
+            </div>
+            <div class="card card--stretch">
+              <h2 class="card__title">Answer</h2>
+              <div id="nl-placeholder" class="placeholder">
+                <p>Ask a question to see a grounded summary, SQL, and row preview.</p>
+              </div>
+              <div id="nl-busy" class="busy" hidden>
+                <div class="spinner" aria-hidden="true"></div>
+                <p>Generating SQL and summary…</p>
+              </div>
+              <div id="nl-error" class="alert alert--error" hidden></div>
+              <div id="nl-output" hidden></div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>OpenAPI docs: <a href="/docs" target="_blank" rel="noopener">/docs</a></span>
+      </footer>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

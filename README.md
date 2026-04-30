@@ -1,6 +1,6 @@
 # Multi-agent trade document validation
 
-A reference implementation of a **three-stage** pipeline for trade paperwork: **multimodal extraction** (PDF or image) with per-field confidence, **rule-based validation** against a customer profile, and a **routing** step that proposes the next action (including optional draft supplier communication). Orchestration uses **LangGraph**; the default LLM stack is **Google Gemini 2.5** (Flash / Pro). A small **FastAPI** service exposes the pipeline and a **grounded natural-language → SQL** interface over stored runs; **Streamlit** provides an operator-oriented UI.
+A reference implementation of a **three-stage** pipeline for trade paperwork: **multimodal extraction** (PDF or image) with per-field confidence, **rule-based validation** against a customer profile, and a **routing** step that proposes the next action (including optional draft supplier communication). Orchestration uses **LangGraph**; the default LLM stack is **Google Gemini 2.5** (Flash / Pro). **FastAPI** runs the pipeline, serves **OpenAPI** docs, and hosts a **static web UI** (`frontend/`: HTML, CSS, JS) on the same origin. A **Streamlit** app remains available as an alternative client. Natural-language analytics hit the same API as the browser UI.
 
 ## Features
 
@@ -9,6 +9,75 @@ A reference implementation of a **three-stage** pipeline for trade paperwork: **
 - **Router** — `auto_approve`, `human_review`, or `draft_amendment_request` with reasoning and a structured discrepancy list.
 - **Persistence** — SQLite (`SQLModel`) for run history; configurable URL for portability to Postgres-style deployments.
 - **NL analytics** — Plain-English questions translated to **read-only** `SELECT` statements, with answers grounded in query results.
+
+## Architecture
+
+Data flows **in one direction** through LangGraph: **extract → validate → route**. The UI only talks to **FastAPI**; the API runs the graph, persists to SQLite, and serves the NL query endpoint. **Gemini** is used for vision extraction (and optionally amendment-email polish), and for NL→SQL + grounded summarization.
+
+```mermaid
+flowchart TB
+  subgraph ui [Presentation]
+    WEB[Web_UI_static]
+    ST[Streamlit_optional]
+  end
+  subgraph api_layer [API]
+    FA[FastAPI]
+  end
+  subgraph orchestration [LangGraph_StateGraph]
+    EX[extract]
+    VA[validate]
+    RO[route]
+    EX --> VA --> RO
+  end
+  subgraph intelligence [Gemini_API]
+    GV[Vision_Flash_or_Pro]
+    GT[Pro_text_SQL_and_summary]
+  end
+  subgraph rules_data [Rules_and_storage]
+    RJ[rules_JSON]
+    DB[(SQLite_document_run)]
+  end
+  WEB -->|same_origin| FA
+  ST -->|HTTP_JSON_multipart| FA
+  FA --> EX
+  EX --> GV
+  VA --> RJ
+  RO -->|optional_polish| GV
+  FA -->|persist_after_run| DB
+  WEB -->|NL_question| FA
+  ST -->|NL_question| FA
+  FA --> GT
+  GT -->|read_only_SELECT| DB
+```
+
+**State:** Each node reads/writes a typed `GraphState` (extraction, validation, and router payloads as JSON-serializable dicts from Pydantic). **Checkpoints:** `MemorySaver` + per-run `thread_id` for resumability in development.
+
+## Repository structure
+
+```text
+Multi-Agent-Trade-Validator/
+├── docs/                          # PRD, technical notes, sample NL queries
+├── samples/                       # Example invoice PNGs + README
+├── scripts/                       # e.g. generate_acme_sample_invoice.py
+├── frontend/                      # Static UI (served by FastAPI at /)
+├── src/trade_validator/
+│   ├── agents/                    # extractor, validator, router
+│   ├── api/                       # FastAPI app + routes (pipeline, query)
+│   ├── clients/                   # Gemini client helpers
+│   ├── config.py                  # env-driven limits and defaults
+│   ├── db/                        # SQLModel models + engine/session
+│   ├── graph/                     # LangGraph pipeline + state
+│   ├── rules/                     # Bundled customer JSON (e.g. acme_retail_eu)
+│   ├── schemas/                   # Pydantic I/O contracts
+│   └── services/                  # rules_loader, storage, nl_query, textnorm
+├── streamlit_app/
+│   └── app.py                     # UI (HTTP client to API only)
+├── tests/
+├── .env.example
+├── LICENSE
+├── pyproject.toml
+└── README.md
+```
 
 ## Requirements
 
@@ -27,21 +96,23 @@ pip install -e ".[dev]"
 cp .env.example .env                 # set GEMINI_API_KEY
 ```
 
-**API** (terminal 1):
+**API + web UI** (one process):
 
 ```bash
 python -m uvicorn trade_validator.api.main:app --host 127.0.0.1 --port 8000
 ```
 
-**UI** (terminal 2):
+Open **http://127.0.0.1:8000/** in a browser for the main UI (pipeline upload, per-field table, router, NL analytics). **http://127.0.0.1:8000/docs** for OpenAPI.
+
+If the app is run from an installed package without the `frontend/` folder next to the project tree, set `TRADE_VALIDATOR_FRONTEND_DIR` to an absolute path to your `frontend` directory.
+
+**Streamlit** (optional second terminal, same API):
 
 ```bash
 export TRADE_VALIDATOR_API_URL=http://127.0.0.1:8000   # Linux / macOS
 # set TRADE_VALIDATOR_API_URL=http://127.0.0.1:8000    # Windows CMD
 python -m streamlit run streamlit_app/app.py
 ```
-
-Upload a PDF or image under **Document**, then **Run pipeline**. The sidebar shows API reachability and supports NL questions after at least one run has been stored.
 
 **Tests:**
 
@@ -68,8 +139,9 @@ pytest
 | `TRADE_VALIDATOR_API_URL` | — | Streamlit → API base URL |
 | `TRADE_VALIDATOR_MAX_LLM_CALLS` | `8` | Max LLM round-trips per pipeline run |
 | `TRADE_VALIDATOR_EXTRACTION_UNCERTAIN_THRESHOLD` | `0.35` | Extraction confidence below → validator `uncertain` |
+| `TRADE_VALIDATOR_FRONTEND_DIR` | — | Absolute path to static UI if auto-discovery fails |
 
-## Repository layout
+## Package map
 
 | Path | Role |
 |------|------|
@@ -79,7 +151,8 @@ pytest
 | `src/trade_validator/db/` | SQLModel models and session |
 | `src/trade_validator/services/` | Rules, storage, NL query |
 | `src/trade_validator/api/` | FastAPI application |
-| `streamlit_app/` | Web UI (HTTP client only) |
+| `frontend/` | Static web UI (HTML/CSS/JS; mounted at `/` by FastAPI) |
+| `streamlit_app/` | Optional Streamlit UI (HTTP client only) |
 | `samples/` | Example inputs and generator script |
 | `tests/` | Pytest suite |
 | `docs/` | Product and technical documentation |
