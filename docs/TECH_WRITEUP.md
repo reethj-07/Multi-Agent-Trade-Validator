@@ -1,6 +1,6 @@
 # Technical write-up — Part 1
 
-**Purpose:** Companion to the runnable POC—architecture, failures, ops thinking. **Export to PDF (1–2 pages)** or paste into Google Docs for submission.
+**Purpose:** Short companion to the repo—how it’s wired, what broke while building it, what I’d watch in prod. Export to PDF (1–2 pages) or paste into Docs for submission if they want a separate artifact.
 
 ---
 
@@ -43,56 +43,48 @@ flowchart LR
   GQ --> DB
 ```
 
-**Data flow:** Upload → FastAPI writes temp file → LangGraph `GraphState` carries `document_path`, `customer_id`, `llm_calls`, `errors`. Nodes emit Pydantic `model_dump(mode="json")`; next node `model_validate`s. **State at rest:** SQLite `document_run` row per completed run; **LangGraph** `MemorySaver` checkpoints in-process (UUID `thread_id`).
+Flow in plain terms: upload hits FastAPI, we spill bytes to a temp file, LangGraph’s state carries path, customer id, llm call budget, and any errors. Each node dumps Pydantic JSON into that dict and the next node parses it back in. When the run finishes we persist one row in SQLite (`document_run`). Checkpoints are in-memory (`MemorySaver`) keyed by the same UUID we use as `job_id` so you can at least reason about replay in dev.
 
 ---
 
-## 2 | Three nasty failure modes (from real testing, not hypotheticals)
+## 2 | Three failure modes that actually bit me
 
-**1) “Correct extraction, wrong validator” (port city + country)**  
-**Symptom:** Model returned `Shanghai, China` and `Rotterdam, Netherlands`; allowlist contained `SHANGHAI`, `ROTTERDAM`. Normalized string `SHANGHAI, CHINA` failed **exact** set membership → **false mismatch** → **`draft_amendment_request`**.  
-**Fix:** `primary_port_city()`—take the segment **before** the first comma (after Unicode comma normalization). **Retest:** degraded Acme PNG → ports **match**, **`auto_approve`**.
+**1) Good extraction, bad validator (ports with “city, country”)**  
+The model returned `Shanghai, China` and `Rotterdam, Netherlands`. The allowlist was `SHANGHAI`, `ROTTERDAM`. After uppercasing we compared `SHANGHAI, CHINA` to a set of bare city tokens—so we flagged a mismatch and routed to amendment even though the ports were right. Fix was boring: strip to the token before the first comma (including Unicode comma variants), then compare. Re-ran on the degraded Acme PNG and ports matched; router went to auto-approve.
 
-**2) Environment split (API won’t import package)**  
-**Symptom:** `ModuleNotFoundError: No module named 'trade_validator'` when running `uvicorn.exe` from Anaconda while `pip install -e` targeted another Python user-site.  
-**Fix:** **`python -m uvicorn`** with the **same** interpreter as `pip`; README + verification checklist.
+**2) Two Pythons**  
+`ModuleNotFoundError: trade_validator` because `uvicorn.exe` on PATH pointed at Anaconda while `pip install -e .` landed in a different site-packages. The fix is always `python -m uvicorn …` with the interpreter you actually installed into; we called that out in the README so the next person doesn’t burn an hour on it.
 
-**3) Streamlit widget session KeyError**  
-**Symptom:** `st.session_state has no key "$$WIDGET_ID-…"` on `st.text_area` in sidebar (Streamlit 1.46+).  
-**Fix:** explicit **`key=`** on every widget; retest full UI flow.
+**3) Streamlit sidebar text area**  
+Newer Streamlit blew up with a session key error on `st.text_area` unless every widget had an explicit `key=`. Annoying but one pass through the file fixed it.
 
-**Secondary (designed-for):** vision **hard failure** → extract node **fallback empty extraction** + traceback in `errors[]` → downstream **uncertain** / **human_review**—tested via code path in `graph/pipeline.py`.
+There’s also a deliberate path when vision hard-fails: empty extraction, traceback in `errors[]`, validator marks uncertainty, router pushes human review. That’s exercised from `graph/pipeline.py` rather than a happy-path demo.
 
 ---
 
-## 3 | Observability at scale (50 customers)
+## 3 | Observability (sketch for “50 customers”)
 
-**Trace one shipment:** **`job_id`** == LangGraph **`thread_id`** (UUID) returned in API JSON and stored in **`document_run.id`**. Log **structured fields**: `job_id`, `customer_id`, node name, `llm_calls` after each LLM hop, `final_action`, duration per node.
+For one shipment you can line up `job_id` from the API with `thread_id` in LangGraph and `document_run.id` in SQLite—it’s the same UUID. If I were logging for real I’d emit one line per hop: ids, customer, node name, `llm_calls` after the call, `final_action` when you’re done, and wall time per node.
 
-**Dashboard (sketch):** requests/min; **p50/p95** latency for extract / validate / route / persist; **% uncertain** and **% auto_approve**; **LLM $/1k docs**; **error rate** (extract exception, NL SQL guard rejections); **top customer_id** by volume.
+A dashboard I’d actually look at: requests per minute, p50/p95 for extract/validate/route/persist, share of runs that hit uncertain vs auto-approve, rough LLM cost per thousand docs, error rate (vision blowups, NL SQL rejected by the guard), and which `customer_id` is eating the budget.
 
 ---
 
-## 4 | Cost (back-of-envelope)
+## 4 | Cost (rough)
 
-**Dominant:** **multimodal extraction**—image/PDF input tokens + JSON output (Flash default; Pro on retry). **Secondary:** NL query (**2** Pro calls: generate `SELECT` + summarize rows) **only when invoked**. **Amendment polish:** optional Flash call, skipped when `llm_calls` ≥ cap.
-
-**Control:** Flash-first; **single Pro retry** on extract exception; **`TRADE_VALIDATOR_MAX_LLM_CALLS`**; template email without polish when budget exhausted.
+Almost all the money is multimodal extraction—big image/PDF in, JSON schema out. Flash by default, Pro once if Flash throws. NL questions cost two Pro text calls when someone runs them (generate SQL, then summarize rows). Amendment polish is a cheap Flash pass unless you’re already at the LLM cap, in which case we fall back to the template body.
 
 ---
 
 ## 5 | Latency
 
-**Slowest hop:** **vision extraction** (large PDF/image, single round-trip). **Improvements:** page **cropping** / tiling for giant PDFs; **async** queue + worker pool; **cache** by content hash; pre-render **downscaled** images when legibility allows.
+Vision extraction dominates; everything else is cheap in comparison. If this had to scale tomorrow I’d look at cropping or tiling huge PDFs, a worker queue instead of blocking the API thread, caching by file hash, and downscaling images when the text is still readable.
 
 ---
 
 ## 6 | If I had a week instead of a day
 
-- **Golden eval CI** (20+ labeled docs) with **regression thresholds**.  
-- **`GET /runs` + run detail** for support.  
-- **Stricter NL-SQL** allowlist (table/column only, read-only DB role).  
-- **Multi-page** table extraction strategy (section prompts or layout model).
+Golden-set tests in CI with a floor on extraction F1. A `GET /runs` plus detail view for support. Tighter NL-SQL (allowlisted tables/columns, read-only DB role). A real plan for multi-page tables instead of one big vision call.
 
 ---
 

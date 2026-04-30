@@ -1,6 +1,6 @@
 # Sample natural-language queries (Part 1 submission)
 
-Run these from the **Analytics (NL)** tab in the web UI (`http://127.0.0.1:8000/`), from the **Streamlit** sidebar (“NL query”), or via API:
+You can run these from the Analytics tab in the browser UI (`http://127.0.0.1:8000/`), from Streamlit’s sidebar if you’re using that client, or with curl/Postman:
 
 ```http
 POST http://127.0.0.1:8000/api/v1/query
@@ -9,32 +9,21 @@ Content-Type: application/json
 {"question": "YOUR_QUESTION_HERE"}
 ```
 
-**Prerequisite:** API and DB exist; `trade_validator.db` is in the working directory where **uvicorn** was started (so NL query uses the same SQLite file).
+Have the API up and at least one pipeline run in the bank. NL query reads whatever SQLite file you get from starting uvicorn—usually `trade_validator.db` in the cwd—so don’t start the server from a random folder unless you mean to.
 
 ## Queries to try
 
-1. **How many document runs are stored in the database?**  
-   *Expect:* A count grounded in `SELECT COUNT(*) FROM document_run`.
+1. How many document runs are stored? (You want a straight `COUNT(*)` on `document_run`.)  
+2. How many runs ended in `human_review`? (`final_action` is one of `auto_approve`, `human_review`, `draft_amendment_request`.)  
+3. How many were auto-approved?  
+4. Last five runs with `customer_id` and `final_action`—small enough to eyeball in the UI.  
+5. How many runs have `mismatch_count > 0`?  
+6. Average `llm_calls_used` across runs (empty table if you haven’t stored anything yet).
 
-2. **How many runs have final_action equal to human_review?**  
-   *Expect:* Count filtered on `final_action` (exact string from schema: `auto_approve`, `human_review`, `draft_amendment_request`).
+## Demo video
 
-3. **How many runs were auto-approved?**  
-   *Expect:* `WHERE final_action = 'auto_approve'`.
+Quick recipe: run the pipeline once on a sample invoice, flip to Analytics, fire questions 1 and 2, then open the SQL/rows panel so whoever’s grading can see the answer came from the query, not thin air.
 
-4. **List the last 5 runs with their customer_id and final_action.**  
-   *Expect:* Small result set; answer summarizes rows only.
+## Honest note
 
-5. **How many runs have at least one mismatch (mismatch_count greater than zero)?**  
-   *Expect:* Filter on `mismatch_count > 0`.
-
-6. **What is the average llm_calls_used across all runs?**  
-   *Expect:* `AVG(llm_calls_used)` — may be empty if no rows.
-
-## For your demo video
-
-Screen-record: run pipeline once → open **Analytics (NL)** (or Streamlit sidebar) → run **(1)** and **(2)** → expand **SQL & rows** to show grounded behavior.
-
-## Note
-
-Answers must come **only** from executed SQL results; if the model generates invalid SQL, the API returns an `error` field—include that in your write-up as honest failure handling.
+If the model emits bad SQL you’ll get an `error` field back—that’s fine to show in a write-up; it’s part of how the thing behaves under guardrails.

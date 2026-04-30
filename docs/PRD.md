@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD)
 
 **Product:** Multi-agent trade document validation pipeline (Nova DAW — Part 1)  
-**Audience:** Engineers implementing the POC; reviewers evaluating Nova understanding  
-**Format:** Execution-oriented (not a vision deck). **Export this file to PDF (3–5 pages)** for submission.
+**Audience:** Whoever implements or grades the POC  
+**Format:** Execution-oriented; export to PDF (about 3–5 pages) if they want a formal drop.
 
 ---
 
@@ -10,15 +10,15 @@
 
 ### 1.1 What is Nova? What problem is it solving that traditional SaaS can’t?
 
-**Nova** (in GoComet’s framing) is a bet that global trade operations need **automation that reaches an outcome**—a **verified** document set and a clear next action—not just another place to store files or chat. Traditional **SaaS** excels at **systems of record** (databases) and **engagement** (inbox, tasks), but it rarely combines **multimodal reading** of messy PDFs, **customer-specific rule logic**, and **safe escalation** in one loop. Humans still re-key fields, rules live in heads, and amendment cycles multiply. Nova targets that gap: **extract → validate → decide** with explicit trust boundaries, so operators handle **exceptions**, not every cell. *(~165 words)*
+GoComet frames Nova as pushing past “another inbox for PDFs.” The point is to land somewhere defensible: a checked document set, a clear call on what happens next, and enough trace that you’re not arguing from memory when a shipment blows up. Ordinary SaaS is good at storing facts and nudging people through tasks; it’s weak at reading ugly scans, applying rules that differ per customer, and knowing when to stop automating. In practice people still copy fields by hand, senior cargo staff carry the rules in their heads, and every amendment adds another half day. Nova tries to close that loop with extract → validate → decide, so humans spend time on exceptions instead of retyping every line.
 
 ### 1.2 What is the FDE (Forward Deployed Engineer) model, and why does GoComet use it for Nova?
 
-**Forward Deployed Engineers** work **inside** the customer’s reality—workflows, edge cases, and integrations—rather than shipping generic features from afar. Trade validation is **high-variance**: customer A requires chapter 8471 HS rules; customer B cares about consignee legal name parity; CG teams tolerate 2–4 email loops as “normal.” An FDE model fits Nova because **outcomes are defined locally** (pilot metrics, rule packs, approval policy), and the product must be **tuned** until those outcomes improve. GoComet uses FDEs to shorten the loop from **messy truth** to **working automation**, which generic product cycles rarely match. *(~115 words)*
+Forward deployed engineers sit with the customer: their lanes, their exceptions, their integrations. Trade validation isn’t one-size-fits-all—one account cares about HS chapter 8471, another about legal name matching on consignee, and “two or four email rounds per shipment” is treated as normal in a lot of shops. Outcomes get defined in the room (pilot metrics, which rule pack ships, who signs off). The product has to be tuned until those numbers move; that’s a bad fit for a purely distant roadmap cycle, which is why the FDE model shows up here.
 
 ### 1.3 What does “System of Outcomes” mean? How is it different from System of Record or System of Engagement?
 
-A **System of Record** answers “What do we know?” (stored facts). A **System of Engagement** answers “How do we coordinate people?” (tasks, messages, workflows). A **System of Outcomes** answers “Did we **get to the right end state**?”—e.g., documents that **pass** customer rules, **auditability** of who approved what, and **time-to-clear** improving. Nova’s POC optimizes for **outcome signals**: per-field **match/mismatch/uncertain**, **router decisions** with reasoning, **persisted runs** for queries—not just filing another PDF. Engagement and record matter, but the **north star** is **verified trade readiness**, not inbox zero. *(~120 words)*
+Record systems answer “what do we know?” Engagement systems answer “how do we move work between people?” An outcomes framing asks whether we actually reached the state we wanted—docs that clear the customer’s bar, an audit trail for who said yes, time-to-clear trending the right way. This POC leans on signals you can inspect: per-field match/mismatch/uncertain, a router call with plain reasoning, runs stored so you can ask questions later. Filing the PDF still matters; the part we care about is whether the shipment is in a state you’d stand behind.
 
 ---
 
@@ -37,7 +37,7 @@ A **System of Record** answers “What do we know?” (stored facts). A **System
 
 ### 2.2 What does success look like for a CG operator in the first 5 minutes?
 
-Within **five minutes** of opening the tool, the CG operator can: **upload** a trade PDF or image; see **every required field** with **confidence** and **source snippet**; see **validation** as match / mismatch / uncertain with **found vs expected**; see a **router decision** with **plain-language reasoning**; and, when rules fail cleanly, receive a **draft amendment** listing discrepancies by field. They can run a **natural-language question** over **stored runs** (e.g., counts by `final_action`) and get an answer **grounded** in query results—not invented numbers.
+They drop in a PDF or photo and get back the fields that matter, each with a confidence score and a short quote from the page so they’re not trusting a black box. Validation reads in plain English: matched, mismatched, or uncertain, with found vs expected when it’s wrong. The router says what it would do next and why. If several fields are off, there’s a draft amendment they can trim and send instead of rewriting from scratch. If their manager pings them for numbers, they can ask a plain-English question over past runs and get an answer tied to actual query rows, not a guess.
 
 ---
 
@@ -52,12 +52,12 @@ Within **five minutes** of opening the tool, the CG operator can: **upload** a t
 
 ### 3.2 JTBD (≥5, testable)
 
-1. **When** a shipment PDF arrives, **I want** structured extraction without re-keying, **so that** I can validate in minutes, not hours.  
-2. **When** extraction is noisy, **I want** the field marked **uncertain** (not “green”), **so that** we **never silently approve** bad data.  
-3. **When** a field violates customer rules, **I want** **found vs expected** on screen, **so that** I can defend the decision to the customer or SU.  
-4. **When** multiple fields fail, **I want** a **draft amendment email** listing each discrepancy, **so that** I edit once and send a consistent message.  
-5. **When** my lead asks for status, **I want** to query stored runs in **plain English**, **so that** I report counts (e.g., flagged this week) without SQL.  
-6. **When** the pipeline crashes mid-run, **I want** resumable state, **so that** we don’t pay twice or lose correlation IDs.  
+1. Shipment PDF lands → get structured fields without retyping the whole page; validation should take minutes, not an afternoon.  
+2. Model output is shaky → mark the field uncertain instead of green-washing it; nothing auto-approved on thin evidence.  
+3. Rule violation → show found vs expected on screen so the CG person can explain it to the customer or the supplier without digging back into the PDF.  
+4. Several fields wrong → one draft email that lists each gap so they edit once instead of sending five contradictory notes.  
+5. Manager asks “how many stuck in review this week?” → ask in normal language over stored runs, get counts that map to real rows.  
+6. Job dies halfway → same thread id can pick up from the last checkpoint instead of burning another full extraction or losing the correlation id.  
 
 ---
 
@@ -65,9 +65,7 @@ Within **five minutes** of opening the tool, the CG operator can: **upload** a t
 
 ### 4.1 Why three agents—not one prompt, not five?
 
-- **One mega-prompt** mixes **perception** (what’s on the page), **governance** (what the customer requires), and **policy** (what we do next). Failures become **un-debuggable** (“was extraction wrong or the rule wrong?”), and you can’t swap models or tests per concern.  
-- **Five+ agents** without crisp I/O contracts (e.g. micro “normalize port” agents) adds **orchestration debt** and **silent state drift** for marginal gain in a time-boxed POC.  
-- **Three agents** mirror the **real CG mental model**: **read the doc** → **check rules** → **decide the action**. Each stage has a **Pydantic contract**; the next stage **validates** input—**loud** failure on schema mismatch.
+One huge prompt blends “what’s on the page,” “what this customer allows,” and “what we do next.” When it goes wrong you can’t tell which layer failed, and you can’t swap the vision model or tighten the rules without touching everything. Spraying the problem into a dozen micro-agents without hard contracts is worse: you spend the sprint wiring state, not shipping behavior. Three steps line up with how cargo people actually talk about the work: read the doc, check it against the rule pack, decide the action. Each hop has a Pydantic payload; the next hop validates it so bad shapes fail loudly instead of drifting downstream.
 
 ### 4.2 Responsibilities, inputs, outputs (executor / verifier / policy framing)
 
@@ -79,11 +77,11 @@ Within **five minutes** of opening the tool, the CG operator can: **upload** a t
 
 ### 4.3 How agents communicate
 
-**Structured handoff via LangGraph state:** each node writes `model_dump(mode="json")` into `GraphState`; the next node calls `model_validate(...)`. No ad-hoc string passing. Optional **`errors[]`** list for operator-visible failures.
+LangGraph carries a typed state dict. After each node we stash `model_dump(mode="json")` and the following node pulls it back through `model_validate(...)`. No free-form strings between stages. There’s also an `errors[]` list for things an operator should see (stack traces, guard failures) without losing the rest of the run.
 
 ### 4.4 Crash recovery
 
-**LangGraph `MemorySaver`** checkpoints after each node. **`thread_id`** is stable per job (UUID aligned with `job_id`). On retry with the same `thread_id`, execution can resume from the last checkpoint (same process in POC; production would use a durable checkpointer).
+Checkpoints use LangGraph’s `MemorySaver` after each node. `thread_id` stays tied to the job id (UUID) so a retry in the same process can resume instead of starting cold. For a real deployment you’d swap in a durable checkpointer; the wiring is the same idea.
 
 ---
 
@@ -130,13 +128,13 @@ Within **five minutes** of opening the tool, the CG operator can: **upload** a t
 
 ### 7.3 Go / No-Go for a 2-week pilot (one customer)
 
-**Go** if: uncertain rate below agreed threshold; **zero** silent-pass incidents on golden set; cost per doc within budget; CG lead signs off “would use weekly”; p95 latency acceptable for their volume. **No-Go** if: repeated wrong **auto_approve** on audit; cost or latency **unbounded**; operators distrust snippets/confidence.
+Green light if uncertain rate stays inside what you agreed with the customer, you see zero silent passes on the golden set, cost per doc is inside budget, the CG lead will actually use it weekly, and p95 latency doesn’t embarrass you at their volume. Pull the plug if auto-approve keeps failing spot checks, spend or latency has no ceiling, or people stop trusting the snippets and confidence scores.
 
 ---
 
 ## 8 | What’s next (after Part 1 ships)
 
-**Next two weeks (priority order):** (1) **Email / folder trigger** and multi-attachment ingestion; (2) **cross-document consistency** (B/L vs invoice field parity—Part 2 theme); (3) **offline eval harness** + dashboard for golden-set regression; (4) **rule versioning** per customer and **human review queue** UI. **Why not something else first:** without **trigger + multi-doc**, the system doesn’t sit in the real CG loop; without **eval**, quality regresses silently as prompts/models change.
+If I had two more weeks I’d chase ingestion first—email or folder drop, more than one attachment—because until the thing fires on real traffic it stays a demo. Cross-doc checks (B/L vs invoice) are the obvious Part 2 thread. I’d also want a small golden set in CI so prompt tweaks don’t quietly wreck extraction, plus versioned rule packs and a thin queue UI for human review. Triggers and multi-doc matter before polish; eval matters before you trust the headline metrics.
 
 ---
 
