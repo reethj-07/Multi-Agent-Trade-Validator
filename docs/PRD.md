@@ -1,150 +1,164 @@
 # Product Requirements Document (PRD)
 
-**Product:** Multi-agent trade document validation pipeline (Nova DAW — Part 1)  
-**Audience:** Whoever implements or grades the POC  
-**Format:** Execution-oriented; export to PDF (about 3–5 pages) if they want a formal drop.
+**What this is:** A working picture of the multi-agent trade document pipeline for Nova DAW (Part 1).  
+**Who it’s for:** Anyone building it, reviewing it, or grading it.  
+**Length:** You can export this to PDF (roughly three to five pages) if you need a formal handoff.
 
 ---
 
-## 1 | Nova, FDE, and System of Outcomes
+## 1 | Nova, FDE, and “system of outcomes”
 
-### 1.1 What is Nova? What problem is it solving that traditional SaaS can’t?
+### 1.1 What Nova is trying to do
 
-GoComet frames Nova as pushing past “another inbox for PDFs.” The point is to land somewhere defensible: a checked document set, a clear call on what happens next, and enough trace that you’re not arguing from memory when a shipment blows up. Ordinary SaaS is good at storing facts and nudging people through tasks; it’s weak at reading ugly scans, applying rules that differ per customer, and knowing when to stop automating. In practice people still copy fields by hand, senior cargo staff carry the rules in their heads, and every amendment adds another half day. Nova tries to close that loop with extract → validate → decide, so humans spend time on exceptions instead of retyping every line.
+Nova isn’t really about building “one more place to stash PDFs.” The uncomfortable truth in operations is that you need something you can defend later: did we actually check this paperwork, what did we find, and what did we decide to do? When a shipment goes sideways, “I think we looked at it” doesn’t cut it.
 
-### 1.2 What is the FDE (Forward Deployed Engineer) model, and why does GoComet use it for Nova?
+Regular SaaS is fine at storing rows and moving tickets. It’s much weaker at squinting at a bad scan, applying rules that change from customer to customer, and knowing when automation should back off. In the wild, people still retype fields by hand, the scary-smart senior keeps half the rules in their head, and every amendment costs half a day of email. This POC is a small step toward **read the doc → check it → decide**, so operators spend their time on the weird cases instead of on copy-paste.
 
-Forward deployed engineers sit with the customer: their lanes, their exceptions, their integrations. Trade validation isn’t one-size-fits-all—one account cares about HS chapter 8471, another about legal name matching on consignee, and “two or four email rounds per shipment” is treated as normal in a lot of shops. Outcomes get defined in the room (pilot metrics, which rule pack ships, who signs off). The product has to be tuned until those numbers move; that’s a bad fit for a purely distant roadmap cycle, which is why the FDE model shows up here.
+### 1.2 Why “forward deployed” shows up in this world
 
-### 1.3 What does “System of Outcomes” mean? How is it different from System of Record or System of Engagement?
+Trade validation doesn’t normalize across accounts. One customer obsesses over HS chapter 8471; another cares that the consignee legal name matches exactly. In plenty of shops, two to four email rounds per shipment is just “how it works.” Forward deployed engineers sit in that reality—lanes, exceptions, integrations—and the definition of “good enough” gets negotiated in the room: pilot metrics, which rule pack ships, who signs off. If the product only moves when a distant roadmap says so, you’ll never tune it fast enough. That’s the FDE story in one sentence.
 
-Record systems answer “what do we know?” Engagement systems answer “how do we move work between people?” An outcomes framing asks whether we actually reached the state we wanted—docs that clear the customer’s bar, an audit trail for who said yes, time-to-clear trending the right way. This POC leans on signals you can inspect: per-field match/mismatch/uncertain, a router call with plain reasoning, runs stored so you can ask questions later. Filing the PDF still matters; the part we care about is whether the shipment is in a state you’d stand behind.
+### 1.3 System of outcomes vs record vs engagement
+
+- **System of record:** “What do we believe is true?”  
+- **System of engagement:** “How does work move between people?”  
+- **System of outcomes:** “Did we actually reach the state we said we wanted?”
+
+This build leans on things you can poke at: each field tagged match / mismatch / uncertain, a router that says what it would do next (in plain language), and runs stored so someone can ask questions later. The PDF still has to land in the filing cabinet; what we care about here is whether you’d stand behind the shipment *after* the tool had its say.
 
 ---
 
 ## 2 | Problem statement
 
-### 2.1 Where does the current trade-doc validation flow break? (Failure modes)
+### 2.1 Where the current flow hurts
 
-| Failure mode | What happens |
-|--------------|----------------|
-| **Tribal rules** | Customer-specific requirements live in senior CG memory; new hires mis-validate for weeks. |
-| **Manual re-keying** | Every field is typed from PDF into checks; slow, error-prone, not scalable. |
-| **Amendment loops** | 2–4 email cycles per shipment are “normal”; each cycle adds **4–24h+** latency. |
-| **No audit trail** | Disputes lack a structured record of **found vs expected** per field. |
-| **Silent errors** | Wrong HS or consignee can pass informal review and cause **holds, fines, or customer penalties**. |
-| **No visibility** | Leadership can’t answer “how many pending / flagged this week?” without a spreadsheet sprint. |
+**Tribal rules.** Customer quirks live in someone’s head; new hires mis-validate for weeks.
 
-### 2.2 What does success look like for a CG operator in the first 5 minutes?
+**Manual re-keying.** Fields get typed from the PDF into checks by hand—slow, easy to get wrong, doesn’t scale.
 
-They drop in a PDF or photo and get back the fields that matter, each with a confidence score and a short quote from the page so they’re not trusting a black box. Validation reads in plain English: matched, mismatched, or uncertain, with found vs expected when it’s wrong. The router says what it would do next and why. If several fields are off, there’s a draft amendment they can trim and send instead of rewriting from scratch. If their manager pings them for numbers, they can ask a plain-English question over past runs and get an answer tied to actual query rows, not a guess.
+**Amendment loops.** Two to four email cycles per shipment isn’t rare, and each cycle often costs hours.
 
----
+**Thin audit trail.** When there’s a dispute, nobody has a clean “found vs expected” story per field.
 
-## 3 | Users and jobs-to-be-done (JTBD)
+**Silent errors.** A wrong HS code or consignee can slip through a casual glance and turn into holds, fines, or angry customers.
 
-### 3.1 Personas
+**No visibility.** “How much is stuck in review this week?” shouldn’t require a spreadsheet marathon.
 
-| Persona | Role | Core concern |
-|---------|------|----------------|
-| **CG (Cargo / Control Group)** | Validator at customer or forwarder | Correctness vs customer rules; speed; defensible audit; safe escalation when unsure. |
-| **SU (Shipping Unit / supplier)** | Shipper / doc issuer | Clear, **field-level** feedback when something is wrong; fewer back-and-forth emails. |
+### 2.2 What “good” feels like in the first five minutes
 
-### 3.2 JTBD (≥5, testable)
-
-1. Shipment PDF lands → get structured fields without retyping the whole page; validation should take minutes, not an afternoon.  
-2. Model output is shaky → mark the field uncertain instead of green-washing it; nothing auto-approved on thin evidence.  
-3. Rule violation → show found vs expected on screen so the CG person can explain it to the customer or the supplier without digging back into the PDF.  
-4. Several fields wrong → one draft email that lists each gap so they edit once instead of sending five contradictory notes.  
-5. Manager asks “how many stuck in review this week?” → ask in normal language over stored runs, get counts that map to real rows.  
-6. Job dies halfway → in dev, LangGraph can reload from the last in-memory checkpoint if you re-invoke with the same `thread_id` in the **same process**; the HTTP API runs one full `invoke` per upload (durable replay would need a persisted checkpointer + resume endpoint).  
+Someone drops in a PDF or a phone photo. They get back the fields that matter, each with a confidence score and a short quote from the page—so they’re not staring at a black box. Validation is readable: matched, mismatched, or uncertain, with found vs expected when something’s wrong. The router explains what it would do next. If several fields are off, there’s a draft amendment email they can edit instead of rewriting from zero. If their manager asks how many runs landed in human review, they can ask in normal language and get an answer tied to real rows in the database, not a vibe.
 
 ---
 
-## 4 | Agent architecture (technical core)
+## 3 | Users and jobs-to-be-done
 
-### 4.1 Why three agents—not one prompt, not five?
+### 3.1 Who we’re picturing
 
-One huge prompt blends “what’s on the page,” “what this customer allows,” and “what we do next.” When it goes wrong you can’t tell which layer failed, and you can’t swap the vision model or tighten the rules without touching everything. Spraying the problem into a dozen micro-agents without hard contracts is worse: you spend the sprint wiring state, not shipping behavior. Three steps line up with how cargo people actually talk about the work: read the doc, check it against the rule pack, decide the action. Each hop has a Pydantic payload; the next hop validates it so bad shapes fail loudly instead of drifting downstream.
+**CG (cargo / control group)** — the person at the customer or forwarder who has to be right. They care about matching the customer’s rules, moving fast, and having an audit trail they can point to. When the model is unsure, they want a safe escalation, not a fake green checkmark.
 
-### 4.2 Responsibilities, inputs, outputs (executor / verifier / policy framing)
+**SU (supplier / shipper)** — the side that issued the docs. They want **field-level** feedback when something’s wrong, so they’re not playing email ping-pong with vague “please fix” notes.
 
-| Agent | Role | Input | Output |
-|-------|------|--------|--------|
-| **Extractor** | **Executor** (perception) | PDF/image bytes, MIME type | `ExtractionResult`: 8 fields × `{value, confidence, source_snippet}` |
-| **Validator** | **Verifier** (rules) | `ExtractionResult` + customer JSON rules (`acme_retail_eu`) | `ValidationReport`: per-field `match` / `mismatch` / `uncertain` + found/expected/reason |
-| **Router** | **Policy + comms** | `ValidationReport` | `RouterDecision`: `auto_approve` \| `human_review` \| `draft_amendment_request` + reasoning + optional draft email |
+### 3.2 Jobs we’re trying to cover (testable)
 
-### 4.3 How agents communicate
-
-LangGraph carries a typed state dict. After each node we stash `model_dump(mode="json")` and the following node pulls it back through `model_validate(...)`. No free-form strings between stages. There’s also an `errors[]` list for things an operator should see (stack traces, guard failures) without losing the rest of the run.
-
-### 4.4 Crash recovery
-
-Checkpoints use LangGraph’s `MemorySaver` after each node. `thread_id` is the job id (UUID) so state is correlated end-to-end; resuming mid-graph is possible only while that checkpointer instance still exists (not across separate API requests today). For production you’d swap in a durable checkpointer and expose explicit resume.
+1. A shipment PDF shows up → turn it into structured fields without retyping the whole page; validation should be minutes, not an afternoon.  
+2. The model is wobbly on a field → mark it **uncertain**, not “probably fine.” Nothing auto-approves on thin evidence.  
+3. A rule fires → show **found vs expected** on screen so CG can explain it to the customer or supplier without reopening the PDF.  
+4. Several fields are wrong → one draft email that lists the gaps, so they edit once instead of sending five contradictory messages.  
+5. A manager asks “how many stuck in review this week?” → ask in plain English over stored runs; the answer should map to actual query results.  
+6. **Checkpoints (honest scope):** LangGraph keeps in-memory checkpoints after each node. In development, you could replay from the last checkpoint **in the same process** if you re-invoked with the same `thread_id`. The HTTP API, as shipped, runs one full `invoke` per upload—so durable “resume this job after a crash” would mean a persisted checkpointer plus a resume API. Worth saying out loud so nobody expects magic across separate requests.
 
 ---
 
-## 5 | LLM and tooling choices
+## 4 | Agent architecture
 
-| Choice | Rationale |
-|--------|-----------|
-| **Gemini 2.5 Flash** — extraction (default) | **Vision + speed + cost**; structured JSON via `response_schema`. |
-| **Gemini 2.5 Pro** — extraction retry, NL→SQL, answer summarization | **Higher quality** on degraded scans and harder reasoning; use **sparingly**. |
-| **Fallback on bad docs** | **Low confidence** → validator → **uncertain** → **human_review**; extraction **retries once** with Pro on failure; amendment body **template** if polish blocked by budget. |
-| **LangGraph** | **Typed state**, **checkpoints**, **linear** `extract→validate→route` with clear test seams. |
-| **Structured output** | **Extraction** (`ExtractionResult`), **NL SQL helper** (`SqlAnswer`), **email polish** (`_AmendmentEmailBody`)—schema enforcement where contracts matter. |
-| **Avoid tool use** | Validator is **deterministic** on rules (debuggable); router policy is **code-first**; LLM used for **drafting** only when safe. |
+### 4.1 Why three steps, not one giant prompt and not fifteen tiny agents
 
----
+Stuffing everything into one prompt mixes “what’s on the page,” “what this customer allows,” and “what we do next.” When it fails, you can’t tell which layer lied. Exploding into a dozen micro-agents without hard contracts means you spend the sprint plumbing state instead of shipping behavior.
 
-## 6 | Trust, failure handling, and evals
+Three stages line up with how people in cargo actually describe the work: read the document, check it against the rule pack, decide what happens. Each handoff uses a **Pydantic** payload; the next stage validates it so garbage doesn’t drift downstream quietly.
 
-| Topic | Approach |
-|-------|----------|
-| **Hallucinated fields** | Prompt: extract only **visible** text; **null + low confidence** if absent; **snippet** required when claiming a value; validator **uncertain** below confidence threshold. |
-| **Low-confidence extraction** | **Never** maps to **auto_approve**; router sends **`human_review`** if **any** field is **uncertain**. |
-| **Loops / runaway cost** | **`TRADE_VALIDATOR_MAX_LLM_CALLS`** hard cap per run; router checks cumulative **`llm_calls`** before optional polish; **no** unbounded retries. |
-| **Offline eval** | **Golden set** (N labeled PDFs): field-level **precision/recall** on extraction; **rule accuracy** on validator; **confusion matrix** on router vs CG labels. |
-| **Online metric** | **% of uploads** reaching **`auto_approve`** without CG override; **sampled audit** of auto-approved rows for **precision**; **p95 latency** per stage. |
+### 4.2 What each agent owns
 
----
+**Extractor (executor / perception)**  
+Takes PDF or image bytes plus MIME type. Produces `ExtractionResult`: eight core fields, each with value, confidence, and a short source snippet.
 
-## 7 | Metrics and success criteria
+**Validator (verifier / rules)**  
+Takes the extraction plus the customer JSON (`acme_retail_eu` in the repo). Produces `ValidationReport`: per field, `match` / `mismatch` / `uncertain`, plus found, expected, and a human-readable reason.
 
-### 7.1 North-star (one number, one sentence)
+**Router (policy + comms)**  
+Takes the validation report. Produces `RouterDecision`: `auto_approve`, `human_review`, or `draft_amendment_request`, with reasoning, a discrepancy list, and an optional draft email when amendments make sense.
 
-**Median minutes from document upload to CG decision** (approve, send amendment, or escalate) on pilot traffic—**lower is better**, measured weekly.
+### 4.3 How they talk to each other
 
-### 7.2 Supporting metrics (5–8)
+LangGraph holds a typed state dict. After each node we serialize with `model_dump(mode="json")` and the next node parses with `model_validate(...)`. No loose strings between stages. There’s also an `errors[]` list so operators can see stack traces or guard failures without losing the rest of the run.
 
-1. **Uncertain field rate** (% of fields marked uncertain).  
-2. **Auto-approve precision** (sampled audit: % of auto-approved runs CG agrees with).  
-3. **Amendment cycles per shipment** (email thread count proxy).  
-4. **LLM cost per document** ($) and **tokens per stage**.  
-5. **p95 pipeline latency** (total + per node).  
-6. **NL query grounding errors** (answers inconsistent with SQL result—target ~0).  
-7. **Operator CSAT / “would use weekly”** (qualitative, 1–5).  
+### 4.4 Crash recovery (what we actually have)
 
-### 7.3 Go / No-Go for a 2-week pilot (one customer)
-
-Green light if uncertain rate stays inside what you agreed with the customer, you see zero silent passes on the golden set, cost per doc is inside budget, the CG lead will actually use it weekly, and p95 latency doesn’t embarrass you at their volume. Pull the plug if auto-approve keeps failing spot checks, spend or latency has no ceiling, or people stop trusting the snippets and confidence scores.
+We use LangGraph’s `MemorySaver` after each node. `thread_id` is the same UUID as `job_id`, so you can correlate API → graph → database row. Mid-graph resume only lasts as long as that in-memory checkpointer exists; it doesn’t automatically survive a new HTTP request. Production shape would be a durable store and an explicit “resume job” path.
 
 ---
 
-## 8 | What’s next (after Part 1 ships)
+## 5 | LLM and tooling
 
-If I had two more weeks I’d chase ingestion first—email or folder drop, more than one attachment—because until the thing fires on real traffic it stays a demo. Cross-doc checks (B/L vs invoice) are the obvious Part 2 thread. I’d also want a small golden set in CI so prompt tweaks don’t quietly wreck extraction, plus versioned rule packs and a thin queue UI for human review. Triggers and multi-doc matter before polish; eval matters before you trust the headline metrics.
+**Gemini 2.5 Flash** is the default for extraction: vision, speed, cost, structured JSON via `response_schema`.
+
+**Gemini 2.5 Pro** is for harder moments: one retry if Flash fails, NL→SQL generation, and summarizing query results. The idea is to use it **sparingly**.
+
+**When the document is ugly:** low confidence flows to the validator as uncertain → router picks **human_review**. Extraction retries once with Pro if Flash throws. If we’re out of LLM budget, the amendment email falls back to a template instead of a polished draft.
+
+**LangGraph** gives typed state, checkpoints, and a straight line: extract → validate → route, with obvious places to test.
+
+**Structured output** matters where contracts matter: extraction (`ExtractionResult`), NL SQL helper (`SqlAnswer`), email polish (`_AmendmentEmailBody`).
+
+**Why the validator isn’t an LLM:** rules are deterministic and debuggable. Router policy is code-first; the model helps draft text when it’s safe, not when we need a verdict we can explain in an audit.
 
 ---
 
-## Appendix — Mapping to implemented POC
+## 6 | Trust, failure handling, and evaluation
 
-| PRD section | Code / artifact |
-|-------------|------------------|
-| Extractor | `src/trade_validator/agents/extractor.py`, schemas `ExtractionResult` |
+**Hallucinated fields:** the extractor prompt pushes “only visible text,” null + low confidence when missing, snippet when claiming a value; the validator can mark uncertain below a confidence threshold.
+
+**Low confidence:** we never route to **auto_approve** if any field is **uncertain**—that goes to **human_review**.
+
+**Runaway cost:** `TRADE_VALIDATOR_MAX_LLM_CALLS` caps round-trips per run; the router checks cumulative `llm_calls` before optional polish; no infinite retry loops.
+
+**Offline eval (where you’d go next):** a small golden set of labeled PDFs—precision/recall on extraction, rule accuracy on the validator, router vs human labels.
+
+**Online:** share of uploads that reach `auto_approve` without override, sampled audits on auto-approved rows, p95 latency per stage.
+
+---
+
+## 7 | Metrics and success
+
+### North star (one number)
+
+**Median minutes from upload to a CG decision** (approve, amendment, or escalate) on pilot traffic—lower weekly is better.
+
+### Supporting metrics that actually help
+
+Uncertain field rate. Auto-approve precision from spot checks. Amendment cycles per shipment (email thread as a proxy). LLM cost and tokens per doc. p95 latency end-to-end and per node. NL answers that contradict the SQL result (you want that near zero). A simple “would you use this weekly?” from operators.
+
+### Go / no-go for a two-week pilot
+
+You’d **go** if uncertain rate stays in the band you agreed with the customer, you’re not seeing silent passes on a golden set, cost per doc fits the budget, the CG lead will really use it, and latency doesn’t fall over at their volume.
+
+You’d **stop** if auto-approve keeps failing audits, spend or latency has no ceiling, or people stop trusting the snippets and scores.
+
+---
+
+## 8 | If Part 1 worked, what I’d do next
+
+I’d chase real ingestion first—email or a watched folder, more than one attachment—because until traffic hits the system it’s still a demo. Cross-document checks (B/L vs invoice) are the natural Part 2. I’d want a tiny golden set in CI so prompt edits don’t silently trash extraction, versioned rule packs, and a thin queue UI for human review. Triggers and multi-doc before polish; evaluation before you believe the headline metrics.
+
+---
+
+## Appendix — Where this lives in the repo
+
+| PRD topic | Location |
+|-----------|----------|
+| Extractor | `src/trade_validator/agents/extractor.py`, `schemas/extraction.py` |
 | Validator | `src/trade_validator/agents/validator.py`, `rules/acme_retail_eu.json` |
 | Router | `src/trade_validator/agents/router.py` |
 | Orchestration | `src/trade_validator/graph/pipeline.py`, `MemorySaver` |
 | Storage + NL | `src/trade_validator/db/`, `services/nl_query.py`, `services/storage.py` |
-| UI + API | `frontend/` (static UI mounted by FastAPI), `streamlit_app/app.py` (optional), `src/trade_validator/api/` |
+| UI + API | `frontend/`, optional `streamlit_app/app.py`, `src/trade_validator/api/` |

@@ -1,10 +1,10 @@
 # Technical write-up — Part 1
 
-**Purpose:** Short companion to the repo—how it’s wired, what broke while building it, what I’d watch in prod. Export to PDF (1–2 pages) or paste into Docs for submission if they want a separate artifact.
+This is the informal companion to the repo: how the pieces connect, what went wrong while I wired them, and what I’d watch if this ever left my laptop. If someone asks for a PDF, you can export this (about a page or two) or paste it into Docs.
 
 ---
 
-## 1 | Architecture (diagram)
+## 1 | Architecture
 
 ```mermaid
 flowchart LR
@@ -43,55 +43,57 @@ flowchart LR
   GQ --> DB
 ```
 
-Flow in plain terms: upload hits FastAPI, we spill bytes to a temp file, LangGraph’s state carries path, customer id, llm call budget, and any errors. Each node dumps Pydantic JSON into that dict and the next node parses it back in. When the run finishes we persist one row in SQLite (`document_run`). Checkpoints are in-memory (`MemorySaver`) keyed by the same UUID we use as `job_id` so you can at least reason about replay in dev.
+**In plain English:** the browser (or Streamlit) talks only to FastAPI. An upload lands as multipart; we write bytes to a temp file so Gemini can read the same thing the user sent. LangGraph’s state carries the path, customer id, how many LLM calls we’ve burned, and any errors worth surfacing. Each node writes Pydantic-shaped JSON into that dict; the next node parses it back in—no “trust me” strings in between. When the graph finishes, we persist one row in SQLite (`document_run`). Checkpoints use LangGraph’s `MemorySaver`, keyed by the same UUID we use as `job_id`, which is handy for reasoning about replay in dev even though each HTTP request today runs a fresh graph to completion.
 
 ---
 
-## 2 | Three failure modes that actually bit me
+## 2 | Three bugs that weren’t in the spec
 
-**1) Good extraction, bad validator (ports with “city, country”)**  
-The model returned `Shanghai, China` and `Rotterdam, Netherlands`. The allowlist was `SHANGHAI`, `ROTTERDAM`. After uppercasing we compared `SHANGHAI, CHINA` to a set of bare city tokens—so we flagged a mismatch and routed to amendment even though the ports were right. Fix was boring: strip to the token before the first comma (including Unicode comma variants), then compare. Re-ran on the degraded Acme PNG and ports matched; router went to auto-approve.
+**Ports that looked wrong when they weren’t.**  
+The model happily returned `Shanghai, China` and `Rotterdam, Netherlands`. Our allowlist was just city tokens like `SHANGHAI` and `ROTTERDAM`. After normalization we were comparing `SHANGHAI, CHINA` to a set of bare names—so we flagged a mismatch and drafted an amendment for ports that were actually fine. The fix wasn’t glamorous: strip to the token before the first comma (including the weird Unicode comma variants), then compare. Re-ran on the degraded Acme sample; ports matched; router moved to auto-approve. That kind of mismatch is exactly why I wanted the validator in code, not buried in a prompt.
 
-**2) Two Pythons**  
-`ModuleNotFoundError: trade_validator` because `uvicorn.exe` on PATH pointed at Anaconda while `pip install -e .` landed in a different site-packages. The fix is always `python -m uvicorn …` with the interpreter you actually installed into; we called that out in the README so the next person doesn’t burn an hour on it.
+**Two Pythons on one machine.**  
+Classic Windows footgun: `uvicorn.exe` on PATH pointed at one environment, `pip install -e .` went somewhere else, and I got `ModuleNotFoundError: trade_validator`. The fix is boring and effective: always `python -m uvicorn …` with the interpreter you actually installed into. That’s spelled out in the README so the next person doesn’t lose an afternoon.
 
-**3) Streamlit sidebar text area**  
-Newer Streamlit blew up with a session key error on `st.text_area` unless every widget had an explicit `key=`. Annoying but one pass through the file fixed it.
+**Streamlit and widget keys.**  
+A newer Streamlit version started complaining about `st.text_area` unless every widget had an explicit `key=`. One pass through `streamlit_app/app.py` fixed it; still annoying.
 
-There’s also a deliberate path when vision hard-fails: empty extraction, traceback in `errors[]`, validator marks uncertainty, router pushes human review. That’s exercised from `graph/pipeline.py` rather than a happy-path demo.
-
----
-
-## 3 | Observability (sketch for “50 customers”)
-
-For one shipment you can line up `job_id` from the API with `thread_id` in LangGraph and `document_run.id` in SQLite—it’s the same UUID. If I were logging for real I’d emit one line per hop: ids, customer, node name, `llm_calls` after the call, `final_action` when you’re done, and wall time per node.
-
-A dashboard I’d actually look at: requests per minute, p50/p95 for extract/validate/route/persist, share of runs that hit uncertain vs auto-approve, rough LLM cost per thousand docs, error rate (vision blowups, NL SQL rejected by the guard), and which `customer_id` is eating the budget.
+There’s also a deliberate unhappy path: if vision blows up completely, we fall back to an empty extraction, stash the traceback in `errors[]`, the validator leans uncertain, and the router sends **human_review**. That’s wired in `graph/pipeline.py`—it won’t show up in a polished demo unless you break something on purpose.
 
 ---
 
-## 4 | Cost (rough)
+## 3 | Observability (if this had fifty customers)
 
-Almost all the money is multimodal extraction—big image/PDF in, JSON schema out. Flash by default, Pro once if Flash throws. NL questions cost two Pro text calls when someone runs them (generate SQL, then summarize rows). Amendment polish is a cheap Flash pass unless you’re already at the LLM cap, in which case we fall back to the template body.
+For a single shipment you can line up three ids without guessing: `job_id` from the API response, `thread_id` in LangGraph config, and `document_run.id` in SQLite—they’re the same UUID.
+
+If I were adding logging tomorrow, I’d emit one structured line per hop: those ids, customer, node name, `llm_calls` after the step, `final_action` at the end, wall time per node.
+
+A dashboard I’d actually open: requests per minute, p50/p95 for extract / validate / route / persist, share of runs that hit uncertain vs auto-approve, rough LLM cost per thousand documents, error rate (vision failures, NL SQL rejected by the guard), and which `customer_id` is eating the budget.
+
+---
+
+## 4 | Cost (back-of-envelope)
+
+Almost all the money is multimodal extraction—big PDF or image in, JSON schema out. Flash by default; Pro once if Flash throws. A natural-language analytics question costs two Pro text calls when someone runs it (generate SQL, then summarize the rows). Amendment polish is usually a small Flash pass; if we’ve already hit the LLM cap for the run, we skip polish and keep the template body.
 
 ---
 
 ## 5 | Latency
 
-Vision extraction dominates; everything else is cheap in comparison. If this had to scale tomorrow I’d look at cropping or tiling huge PDFs, a worker queue instead of blocking the API thread, caching by file hash, and downscaling images when the text is still readable.
+Vision dominates the clock; validate and route are cheap by comparison. If this had to scale next week, I’d look at cropping or tiling huge PDFs, pushing work to a queue instead of blocking the API thread, caching by file hash, and downscaling images when the text is still readable.
 
 ---
 
 ## 6 | If I had a week instead of a day
 
-Golden-set tests in CI with a floor on extraction F1. A `GET /runs` plus detail view for support. Tighter NL-SQL (allowlisted tables/columns, read-only DB role). A real plan for multi-page tables instead of one big vision call.
+Golden-set tests in CI with a floor on extraction F1. A `GET /runs` plus a detail view for support. Tighter NL-SQL (allowlisted tables/columns, read-only DB role at the database level, not just string guards). A real strategy for dense multi-page tables instead of one giant vision call.
 
 ---
 
-## Appendix — Repo entrypoints
+## Appendix — How to run it
 
-| Surface | Command / path |
-|---------|------------------|
-| API + primary UI | `python -m uvicorn trade_validator.api.main:app --host 127.0.0.1 --port 8000` then open `http://127.0.0.1:8000/` |
-| Streamlit (optional) | `python -m streamlit run streamlit_app/app.py` (set `TRADE_VALIDATOR_API_URL`) |
-| Tests | `python -m pytest` (use the same interpreter as `pip install -e ".[dev]"`) |
+| What | Command / URL |
+|------|----------------|
+| API + main UI | `python -m uvicorn trade_validator.api.main:app --host 127.0.0.1 --port 8000` then open `http://127.0.0.1:8000/` |
+| Streamlit (optional) | `python -m streamlit run streamlit_app/app.py` — set `TRADE_VALIDATOR_API_URL` if the API isn’t local |
+| Tests | `python -m pytest` with the **same** Python you used for `pip install -e ".[dev]"` |
