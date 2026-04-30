@@ -9,7 +9,8 @@
 ```mermaid
 flowchart LR
   subgraph client [Client]
-    ST[Streamlit_UI]
+    WEB[Web_UI_static]
+    ST[Streamlit_optional]
   end
   subgraph api [API]
     FA[FastAPI]
@@ -27,6 +28,7 @@ flowchart LR
     RU[rules_JSON_acme]
     DB[(SQLite_document_run)]
   end
+  WEB -->|same_origin| FA
   ST -->|HTTP_multipart| FA
   FA --> EX
   EX --> GV
@@ -34,8 +36,8 @@ flowchart LR
   RU --> VA
   VA --> RO
   RO --> GQ
-  RO --> FA
   FA -->|persist| DB
+  WEB -->|NL_question| FA
   ST -->|NL_question| FA
   FA -->|text_to_SQL| GQ
   GQ --> DB
@@ -98,6 +100,6 @@ flowchart LR
 
 | Surface | Command / path |
 |---------|------------------|
-| API | `python -m uvicorn trade_validator.api.main:app --host 127.0.0.1 --port 8000` |
-| UI | `python -m streamlit run streamlit_app/app.py` |
-| Tests | `pytest` |
+| API + primary UI | `python -m uvicorn trade_validator.api.main:app --host 127.0.0.1 --port 8000` then open `http://127.0.0.1:8000/` |
+| Streamlit (optional) | `python -m streamlit run streamlit_app/app.py` (set `TRADE_VALIDATOR_API_URL`) |
+| Tests | `python -m pytest` (use the same interpreter as `pip install -e ".[dev]"`) |

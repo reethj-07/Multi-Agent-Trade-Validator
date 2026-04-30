@@ -13,7 +13,7 @@ python scripts/generate_acme_sample_invoice.py
 | `acme_commercial_invoice_filled.png` | **Clean** — filled commercial invoice (values match [`acme_retail_eu`](../src/trade_validator/rules/acme_retail_eu.json) for a happy-path test). |
 | `acme_commercial_invoice_degraded.png` | **Degraded** — half resolution + heavier PNG compression (harder for vision). |
 
-Upload either in Streamlit or:
+Upload from the web UI at `http://127.0.0.1:8000/`, in Streamlit, or via curl:
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/pipeline/run" -F "file=@samples/acme_commercial_invoice_filled.png"

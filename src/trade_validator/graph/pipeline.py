@@ -9,7 +9,6 @@ import uuid
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from trade_validator.agents.extractor import run_extractor, sniff_mime_type
 from trade_validator.agents.router import run_router
 from trade_validator.agents.validator import run_validator
 from trade_validator.config import DEFAULT_CUSTOMER_ID
@@ -21,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def _node_extract(state: GraphState) -> dict:
+    from trade_validator.agents.extractor import run_extractor, sniff_mime_type
+
     try:
         path = state.get("document_path")
         doc_bytes = None

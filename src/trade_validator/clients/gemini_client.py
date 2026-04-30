@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from dotenv import load_dotenv
-from google.genai import Client, types
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from google.genai import Client as GenaiClient
 
 # Stable model IDs for the Gemini API (see https://ai.google.dev/gemini-api/docs/models).
 GEMINI_MODEL_FLASH = "gemini-2.5-flash"
@@ -29,13 +31,15 @@ def _ensure_dotenv() -> None:
         load_dotenv(env_file, override=False)
 
 
-def get_gemini_client(*, api_key: str | None = None) -> Client:
+def get_gemini_client(*, api_key: str | None = None) -> GenaiClient:
     """
     Build a Gemini API client.
 
     Uses ``GEMINI_API_KEY`` (preferred) or ``GOOGLE_API_KEY`` after loading ``.env``,
     matching the ``google-genai`` SDK.
     """
+    from google.genai import Client
+
     _ensure_dotenv()
     key = (
         api_key
@@ -51,7 +55,7 @@ def get_gemini_client(*, api_key: str | None = None) -> Client:
 
 
 def generate_structured(
-    client: Client,
+    client: GenaiClient,
     model: str,
     contents: Any,
     response_model: type[T],
@@ -66,6 +70,8 @@ def generate_structured(
     Use ``GEMINI_MODEL_FLASH`` for fast / cheap multimodal extraction; ``GEMINI_MODEL_PRO``
     for harder reasoning or ambiguous documents.
     """
+    from google.genai import types
+
     config_kw: dict[str, Any] = {
         "temperature": temperature,
         "response_mime_type": "application/json",

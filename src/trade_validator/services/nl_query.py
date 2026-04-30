@@ -6,12 +6,11 @@ import json
 import re
 from typing import Any
 
-from google.genai import types
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-from trade_validator.clients.gemini_client import GEMINI_MODEL_PRO, get_gemini_client
+from trade_validator.clients.gemini_client import GEMINI_MODEL_PRO
 from trade_validator.config import DATABASE_URL
 
 _SCHEMA_PROMPT = """
@@ -80,6 +79,10 @@ def _validate_select_only(sql: str) -> None:
 
 
 def generate_sql(question: str) -> SqlAnswer:
+    from google.genai import types
+
+    from trade_validator.clients.gemini_client import get_gemini_client
+
     client = get_gemini_client()
     response = client.models.generate_content(
         model=GEMINI_MODEL_PRO,
@@ -109,6 +112,10 @@ def run_select(engine: Engine, sql: str) -> list[dict[str, Any]]:
 
 
 def summarize_rows(question: str, rows: list[dict[str, Any]]) -> str:
+    from google.genai import types
+
+    from trade_validator.clients.gemini_client import get_gemini_client
+
     client = get_gemini_client()
     payload = json.dumps(rows, default=str)[:120000]
     prompt = (

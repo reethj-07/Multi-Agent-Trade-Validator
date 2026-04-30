@@ -10,6 +10,24 @@ A reference implementation of a **three-stage** pipeline for trade paperwork: **
 - **Persistence** — SQLite (`SQLModel`) for run history; configurable URL for portability to Postgres-style deployments.
 - **NL analytics** — Plain-English questions translated to **read-only** `SELECT` statements, with answers grounded in query results.
 
+## Part 1 deliverables (checklist)
+
+| Deliverable | Where |
+|-------------|--------|
+| Three agents (extract / validate / route) + Pydantic contracts | `src/trade_validator/agents/`, `schemas/` |
+| LangGraph orchestration + `MemorySaver` checkpoints | `src/trade_validator/graph/pipeline.py` |
+| Acme customer rules (JSON) | `src/trade_validator/rules/acme_retail_eu.json` |
+| Gemini 2.5 Flash (default) / Pro (optional + NL path) | `clients/gemini_client.py`, `agents/extractor.py`, `services/nl_query.py` |
+| SQLite persistence + NL → read-only SQL | `db/`, `services/storage.py`, `services/nl_query.py` |
+| FastAPI (`/api/v1/pipeline/run`, `/api/v1/query`, `/health`) | `src/trade_validator/api/` |
+| Operator UI | `frontend/` (primary, served at `/`) and optional `streamlit_app/` |
+| Runnable samples + generator | `samples/`, `scripts/generate_acme_sample_invoice.py` |
+| Product + technical docs | `docs/PRD.md`, `docs/TECH_WRITEUP.md`, `docs/SAMPLE_QUERIES.md` |
+| Automated tests | `tests/` — run `python -m pytest` with the same env as `pip install -e ".[dev]"` |
+| License | `LICENSE` (MIT) |
+
+**Submission artifacts:** Export `docs/PRD.md` and `docs/TECH_WRITEUP.md` to PDF as described in those files; screen demo using the web UI or Streamlit per `docs/SAMPLE_QUERIES.md`.
+
 ## Architecture
 
 Data flows **in one direction** through LangGraph: **extract → validate → route**. The UI only talks to **FastAPI**; the API runs the graph, persists to SQLite, and serves the NL query endpoint. **Gemini** is used for vision extraction (and optionally amendment-email polish), and for NL→SQL + grounded summarization.
@@ -117,8 +135,10 @@ python -m streamlit run streamlit_app/app.py
 **Tests:**
 
 ```bash
-pytest
+python -m pytest
 ```
+
+Use the **same** Python interpreter you used for `pip install -e ".[dev]"` so imports and `google-genai` resolve correctly.
 
 **Health:** `GET /health`
 

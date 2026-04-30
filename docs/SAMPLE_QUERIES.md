@@ -1,6 +1,6 @@
 # Sample natural-language queries (Part 1 submission)
 
-Run these in the **Streamlit sidebar** (“NL query”) after at least one pipeline run, or via API:
+Run these from the **Analytics (NL)** tab in the web UI (`http://127.0.0.1:8000/`), from the **Streamlit** sidebar (“NL query”), or via API:
 
 ```http
 POST http://127.0.0.1:8000/api/v1/query
@@ -33,7 +33,7 @@ Content-Type: application/json
 
 ## For your demo video
 
-Screen-record: run pipeline once → open sidebar → run **(1)** and **(2)** → expand **SQL & rows** in the UI to show grounded behavior.
+Screen-record: run pipeline once → open **Analytics (NL)** (or Streamlit sidebar) → run **(1)** and **(2)** → expand **SQL & rows** to show grounded behavior.
 
 ## Note
 

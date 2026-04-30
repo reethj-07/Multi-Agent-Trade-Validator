@@ -149,4 +149,4 @@ Within **five minutes** of opening the tool, the CG operator can: **upload** a t
 | Router | `src/trade_validator/agents/router.py` |
 | Orchestration | `src/trade_validator/graph/pipeline.py`, `MemorySaver` |
 | Storage + NL | `src/trade_validator/db/`, `services/nl_query.py`, `services/storage.py` |
-| UI + API | `streamlit_app/app.py`, `src/trade_validator/api/` |
+| UI + API | `frontend/` (static UI mounted by FastAPI), `streamlit_app/app.py` (optional), `src/trade_validator/api/` |

@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from google.genai import types
-
 from trade_validator.clients.gemini_client import (
     GEMINI_MODEL_FLASH,
     GEMINI_MODEL_PRO,
@@ -70,6 +68,8 @@ def run_extractor(
     """
     if document_bytes is None or mime_type is None:
         return _stub_extraction(document_label), 0
+
+    from google.genai import types
 
     if llm_calls_used >= MAX_LLM_CALLS_PER_PIPELINE:
         raise RuntimeError(

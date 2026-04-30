@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from pydantic import BaseModel, Field
 
-from trade_validator.clients.gemini_client import GEMINI_MODEL_FLASH, get_gemini_client
 from trade_validator.config import MAX_LLM_CALLS_PER_PIPELINE
 from trade_validator.schemas.routing import (
     DiscrepancyItem,
@@ -71,6 +70,11 @@ def _maybe_polish_amendment_email(
     if llm_calls_used >= MAX_LLM_CALLS_PER_PIPELINE:
         return template_body, 0
     try:
+        from trade_validator.clients.gemini_client import (
+            GEMINI_MODEL_FLASH,
+            get_gemini_client,
+        )
+
         client = get_gemini_client()
     except ValueError:
         return template_body, 0
